@@ -10,6 +10,7 @@ The aim of the project is to determine the main reasons for gradual length decre
 * [Contact](#contact)
 
 ## General info
+In recent decades, gradual decrease of the Atlantic Herring's size was noticed. In order to perform an appropriate analysis, one carried out measurements of herrings' lenght and their life conditions in last 60 years. As part of a single fishing, 50 to 100 three-year-old herrings were randomly selected.
 
 ## Technology
 R 3.6 (i.a. dplyr, ggplot2, caret)
