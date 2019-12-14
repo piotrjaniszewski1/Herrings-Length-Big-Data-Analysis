@@ -11,14 +11,11 @@ The aim of the project is to determine the main reasons for gradual length decre
 
 ## General info
 
-## Technologies
-* R 3.6 (i.a. dplyr, ggplot2, caret)
-* Tensorflow 2.0
-* spaCy 2.2
+## Technology
+R 3.6 (i.a. dplyr, ggplot2, caret)
 
 ## Setup
-Clone the repository and:
-* Open the jupyter notebook locally, by executing `jupyter notebook Solution.ipynb`
+Clone the repository and run the main.R script, by executing `Rscript main.R`
 
 There is also a file with a report `Report.Rmd` which presents all the code and results in a concise way.
 
