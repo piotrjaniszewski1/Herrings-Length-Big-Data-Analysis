@@ -1,0 +1,303 @@
+---
+title: "The length of the Atlantic Herring - Big Data Analysis"
+output:
+  html_document:
+    keep_md: yes
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+## General information
+
+Two regressors were created. The first one. which is linear regression, is a baseline solution. The second one was trained using Generalized Boosted Regression Modelling (GBM) with 10-fold cross validation.
+
+The histogram of the Herring's length depending on the number of fish is similar to normal distribution. The visualization of other attributes shows clear that there are mainly dependencies between the length and water temperature or north Atlantic oscillation. A dependency between the herring's length fishing intensity in the region exists but it is weaker.
+
+The strongest correlations are between pairs: (Plankton Calanus helgolandicus 1 availability; Concentration of The Copepod of first species), (Fishin intensity in the region; Total annual fishing intensity in the region), (Plankton Calanus helgolandicus 2 availability; Concentration of The Copepod of second species), (Total number of fish caught during a single fishing; Total annual fishing intensity in the region). It means that removing one of the attributes from each pair may simplify the model, reduce overfitting effect and shorten the duration of learning.
+
+Between 1958 and 1978 one can notice a stable growth of the Herring's size. Around 1978 the Herring was of the biggest size i.e. about 27,2cm. However after 1978, a couple of rapid falls  were observed. Finally, the length significantly decreased till 2018 and it was equal to about 23,5cm.
+
+As a result of the analysis, it turned out that the most important attributes are: Total annual fishing intensity in the region, Fishing intensity in the region, The level of salinity, water temperature and Plankton Calanus finmarchicus 1 availability.
+
+# Code and analysis results
+
+## Libraries
+```{r setup, results="hide"}
+library(zoo)
+library(dplyr)
+library(corrgram)
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+library(fredr)
+library(cowplot)
+library(data.table)
+library(gganimate)
+library(data.table)
+library(gifski)
+library(png)
+library(caret)
+library(pROC)
+```
+
+## Assurence of the experiment reproducibility
+```{r seed}
+set.seed(23)
+```
+
+
+## Load data
+```{r}
+herrings_raw_top <- read.csv(file='https://raw.githubusercontent.com/mateuszskiba/emd-1/master/sledzie.csv?token=AFU5A4AIIMA5QAADFMACAFS55ZYIY', header=TRUE, sep=',', na.strings='?', nrows=100)
+classes <- sapply(herrings_raw_top, class)
+herrings_raw <- read.csv(file='https://raw.githubusercontent.com/mateuszskiba/emd-1/master/sledzie.csv?token=AFU5A4AIIMA5QAADFMACAFS55ZYIY', header=TRUE, sep=',', na.strings='?', colClasses=classes)
+```
+
+## Dealing with lacking data
+```{R lacking_data}
+herrings <- 
+  herrings_raw %>%
+  do(na.locf(.))
+```
+
+Since the observations made during the same fishing are presented in the dataset one by one and they have generally similar parameters, the lacking values of a single example were replaced basing on the values of one example above. Therefore, the first entry was removed, because it lacked some values and there was no example above.
+
+```{R lacking_data_head}
+head(herrings)
+```
+
+## Basic statistics
+
+There are 52581 entries with 15 attributes in the dataset. The distribution of attributes and the most important statistics are depicted below. The only variable which may have negative values is the north Atlantic oscillation.
+
+```{R basics}
+dim(herrings)
+summary(herrings)
+```
+
+## Detailed analysis of attributes' values
+
+The histogram of the Herring's length distribution. The minimum value is 19 cm and maximum is 32,5 cm.
+```{R detailed_analysis1}
+ggplot(herrings, aes(x=length)) + geom_histogram(binwidth=1, colour="black", fill="white")
+```
+
+Entries were grouped by the values of attributes, in order to check dependencies between the attributes (Here, dependency between the length and water temperature). The graph presents appropriate points and the curve which is the best approximation of the analyzed dependency. Moreover the color intensity shows the value of north Atlantic oscillation (the attribute that has the second most significant impact on the length)
+```{R detailed_analysis2}
+herrings_sst <- herrings %>%
+  group_by(sst) %>%
+  summarise_all(list(mean))
+
+ggplot(
+  herrings_sst,
+  aes(x=sst,
+      y=length,
+      color=nao
+  )
+) +
+geom_point() + geom_smooth(method='lm')
+```
+
+The dependency between the length and north Atlantic oscillation [mb].
+
+```{R detailed_analysis3}
+
+herrings_nao <- herrings %>%
+  group_by(nao) %>%
+  summarise_all(list(mean))
+
+ggplot(
+  herrings_nao,
+  aes(x=nao,
+      y=length
+  )
+) +
+geom_point() + geom_smooth(method='lm')
+```
+
+
+The dependency between the length and the intensity of fishing in the region.
+
+
+```{R detailed_analysis4}
+herrings_fbar <- herrings %>%
+  group_by(fbar) %>%
+  summarise_all(list(mean))
+
+ggplot(
+  herrings_fbar,
+  aes(x=fbar,
+      y=length
+  )
+) +
+geom_point() + geom_smooth(method='lm')
+```
+
+
+The dependency between the length and the plankton Calanus helgolandicus of first species availability. The outliers have a significant impact on the slope of the straight line (on the right side of the graph). One can observe only a weak dependency.
+
+```{R detailed_analysis5}
+herrings_chel1 <- herrings %>%
+  group_by(chel1) %>%
+  summarise_all(list(mean))
+
+ggplot(
+  herrings_chel1,
+  aes(x=chel1,
+      y=length
+  )
+) +
+geom_point() + geom_smooth(method='lm')
+```
+
+The dependency between the length and the salinity level [Knudsen ppt]. The linear regression does not explain sufficiently any dependency between the attributes.
+
+```{R detailed_analysis6}
+herrings_sal <- herrings %>%
+  group_by(sal) %>%
+  summarise_all(list(min))
+
+ggplot(
+  herrings_sal,
+  aes(x=sal,
+      y=length
+  )
+) +
+geom_point() + geom_smooth(method='lm')
+```
+
+## Correlations between attributes
+In the picture below, one can notice that the length of the Herring is highly correlated with: Water temperature (**-0.45**); North Atlantic oscillation (**-0.26**), Fishing intensity in the region (**0.25**) oraz Plankton Calanus helgolandicus of species 2 availability (**0.22**).
+
+Other observations:
+
+* Strong correlation between Plankton Calanus helgolandicus of species 1 availability and Concentration of The Copepod of first species: **0.95**
+* High correlation between Plankton Calanus helgolandicus of species 2 a Concentration of The Copepod of second species: **0.88**
+* Significant correlation between Fishing intensity in the region oraz Total annual fishing intensity in the region: **0.82** (Since the both attributes are related to fishing intensity, the correlation is obvious)
+* Remarkable correlation between Total number of fish caught during a single fishing and Total annual fishing intensity in the region: **-0.71** (z racji, iż im więcej ryb zostało złowionych tym mniejsza jest liczba pozostawionego narybku)
+
+
+```{r correlations}
+corrgram(herrings, order=TRUE, lower.panel=panel.shade,
+         upper.panel=panel.cor, text.panel=panel.txt,
+         main="Herrings - Variables Correlations")
+```
+
+## The animation of the Atlantic Herring's length change in time
+
+The animation shows how the size of the 3-year Atlantic Herring was chaning over 60 years. From 1958 to 1978 the length of the Herring was constantly increasing and in 1978 it reached its maximal value i.e. 27,2 cm. Then, one observed three significant falls aroud 1984, 1990 and 1997. Then, the length decreased systematically and in 2018 it was equal to about 23,5 cm.
+
+### Data preparation
+```{r animations_data}
+herrings_animation <- 
+  herrings %>%
+  mutate(yearn=ceiling(X/(max(X)/90))) %>% 
+  select(yearn, length) %>%
+  group_by(yearn) %>%
+  summarize(length = mean(length))%>%
+  mutate(yearn=(2018 - (60 - ceiling(yearn/(max(yearn)/60)))))
+```
+
+### Creation of the animation
+```{r animations}
+a <- 
+  ggplot(data=herrings_animation,aes(x=yearn,y=length))+
+  geom_line()+
+  theme(legend.position="none")+
+  scale_y_continuous(breaks=c(22, 23, 24, 25, 26, 27))+
+  scale_x_continuous()+
+  labs(title="The Herring's length change in time",
+       x="Year",
+       y="Length [cm]")+
+  theme(plot.title=element_text(face="bold"),
+        plot.caption=element_text(hjust=0))+
+  transition_reveal(yearn)
+
+animate(a, fps = 10, duration = 10, renderer = gifski_renderer())
+```
+
+## Regression
+### Linear Regression
+```{r lin_reg}
+idx <- createDataPartition(herrings$length, times=2, p=0.25, list=FALSE)
+idxTest <- idx[,1]
+idxVal <- idx[,2]
+
+train <- herrings[-c(idxTest, idxVal),]
+test <- herrings[idxTest,]
+val <- herrings[idxVal,]
+
+# Graph
+ggplot(mapping=aes(alpha=0.4)) + 
+  geom_density(aes(length, fill="train"), train) + 
+  geom_density(aes(length, fill="test"), test) + 
+  geom_density(aes(length, fill="val"), val)
+
+# Regressor training
+fit <- train(length ~ .,
+             data = train,
+             method = "lm")
+fit
+
+# Prediction
+regFloatLength <- predict(fit,
+                          newdata = test)
+regLength <- round(regFloatLength)
+
+# Confusion Matrix
+confusionMatrix(data = factor(regLength, levels=min(test$length):max(test$length)),
+                factor(test$length, levels=min(test$length):max(test$length)))
+
+# R^2
+rsq <- function (x, y) cor(x, y) ^ 2
+rsq(regFloatLength, test$length)
+```
+
+### Generalized Boosted Regression Modelling (GBM) with 10-fold cross validation
+```{R gbm1,  results="hide"}
+ctrl <- trainControl(
+           method = "repeatedcv",
+           number = 10,
+           repeats = 10)
+fit <- train(length ~ .,
+             data = train,
+             trControl = ctrl,
+             method = "gbm")
+```
+```{R gbm2}
+fit
+```
+
+
+```{R gbm3}
+regFloatLength <- predict(fit,
+                      newdata = test)
+regLength <- round(regFloatLength)
+confusionMatrix(data = factor(regLength, levels=min(regLength):max(regLength)),
+                factor(test$length, levels=min(regLength):max(regLength)))
+rsq(regFloatLength, test$length)
+rsq(regLength, test$length)
+```
+
+
+## Analysis of attributes importance
+
+The analysis was carried out using a cross validation method. Moreover, it turned out that the most vital attributes were: Total annual fishing intensity in the region, Fishing intensity in the region, salinity level, water temperature and the plankton Calanus finmarchicus of first species availability.
+
+
+```{R variables_importance}
+ctrl <- rfeControl(functions = lmFuncs,
+                   method = "repeatedcv",
+                   repeats = 10,
+                   verbose = FALSE)
+
+lmProfile <- rfe(train[,-2],
+                 train$length,
+                 sizes=c(1:15),
+                 rfeControl = ctrl)
+
+lmProfile
+```
